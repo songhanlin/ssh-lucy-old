@@ -1,0 +1,102 @@
+num=0
+declare -A server_list=()
+AUTO_LOGIN_DIR=~/ssh-lucy
+# load include server list configure
+if [ $AUTO_LOGIN_DIR ]; then
+	# Determine whether the configuration folder exists
+	if [ -d $AUTO_LOGIN_DIR ];then
+		# Traversing each configuration
+		for config_file in $AUTO_LOGIN_DIR/*;do 
+			if [ "${config_file%.*}"x = "/目录/servers"x ];then
+                while read ip user password port name ;do
+                    if [ ${num} -gt 0 ]; then
+                        server_list["${name}"]="${ip} ${user} ${password} ${port}"
+                    fi
+                    num=$(($num+1))
+                done < $config_file 
+			fi
+		done
+	else
+		echo "AUTO_LOGIN_DIR nothing configure files" && exit 1
+	fi
+else
+	echo "Please setting AUTO_LOGIN_DIR \nmkdir ~/.ssha" && exit 1
+fi
+
+function list() {
+    echo -e "Ip\t\t\tPort\tUser\t\tName"
+    for key in ${!server_list[@]}; do
+        servers=(${server_list[$key]})
+        echo -e "${servers[0]}\t\t${servers[3]}\t${servers[1]}\t\t${key}"| toilet -f term -F border -t --gay
+    done
+    exit 0
+}
+
+function listPwd() {
+    echo -e "Ip\t\t\tPort\tUser\t\tPassword\t\t\tName"
+    for key in ${!server_list[@]}; do
+        servers=(${server_list[$key]})
+        echo -e "${servers[0]}\t\t${servers[3]}\t${servers[1]}\t\t${servers[2]}\t\t\t${key}"| toilet -f term -F border -t --gay
+    done
+    exit 0
+}
+
+function usage() {
+    echo "usege:"
+    echo "ssha [-h] [-l] [-p] [-s <server alias>]"
+    exit 0
+}
+
+function login(){
+    server=(${server_list[$1]})
+    if [ ! $server ]; then
+        echo "找不到服务" && list && exit 1
+    fi
+    echo "$USER logging into the【${server[0]}】 server"| toilet -f term -F border --gay
+
+	command="
+        expect {
+                \"*assword\" {set timeout 6000; send \"${server[2]}\n\"; exp_continue ; sleep 3; }
+                \"*passphrase\" {set timeout 6000; send \"${server[2]}\r\n\"; exp_continue ; sleep 3; }
+                \"yes/no\" {send \"yes\n\"; exp_continue;}
+                \"Last*\" {  send_user \"\nsuccessfully logined 【${server[0]}】\n\";}
+        }
+       interact
+    ";
+   pem=${server[2]}
+   if [ -f "$pem" ]
+   then
+	expect -c "
+		spawn ssh -p ${server[3]} -i ${server[2]} ${server[1]}@${server[0]}
+		${command}
+	"
+   else
+	expect -c "
+		spawn ssh -p ${server[3]} ${server[1]}@${server[0]}
+		${command}
+	"
+   fi
+    echo -e "\t$USER logged out the【${server[0]}】 server\t" | toilet -f term -F border --gay
+}
+# clear screen
+clear
+while getopts hlps: ARGS  
+do  
+case $ARGS in   
+    s)
+        login $OPTARG
+        ;;
+    l)
+        list
+        ;;
+    p)
+        listPwd
+        ;;
+    h)  
+        usage
+        ;;  
+    *)  
+        usage
+        ;;
+esac
+done
